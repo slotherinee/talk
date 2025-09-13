@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
+const { generateTurnCredentials } = require("./turn-credentials");
 
 const app = express();
 const server = http.createServer(app);
@@ -13,6 +14,41 @@ const io = new Server(server, {
 
 // Serve built client (if present) from server/dist
 const distPath = path.join(__dirname, "dist");
+// ICE servers endpoint
+app.get("/api/ice-servers", (req, res) => {
+  const turnCreds = generateTurnCredentials();
+  const iceServers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun.sipnet.ru" },
+    { urls: "stun:stun.sipnet.net" },
+    {
+      urls: "turn:" + req.get("host") + ":3478",
+      username: turnCreds.username,
+      credential: turnCreds.credential,
+    },
+    {
+      urls: "turns:" + req.get("host") + ":5349",
+      username: turnCreds.username,
+      credential: turnCreds.credential,
+    },
+  ];
+  res.json({ iceServers });
+});
+
+// Room validation endpoint
+app.get("/api/room/:roomId/exists", (req, res) => {
+  const roomId = req.params.roomId;
+  const roomExists = io.sockets.adapter.rooms.has(roomId);
+  const wasCreated = roomCreatedAt.has(roomId);
+
+  res.json({
+    exists: roomExists,
+    wasCreated: wasCreated,
+    canJoin: roomExists || !roomExists, // Allow joining even if room doesn't exist (auto-create)
+  });
+});
+
 app.use(express.static(distPath));
 // SPA fallback to index.html
 app.get("*", (req, res) => {
@@ -42,16 +78,8 @@ function emitMembers(room) {
   if (enriched.length === 0) {
     if (!emptyTimers.has(room)) {
       const deleteAt = new Date(Date.now() + ROOM_EMPTY_GRACE_MS).toISOString();
-      console.log(
-        `[ROOM ${room}] became empty -> scheduling deletion in ${
-          ROOM_EMPTY_GRACE_MS / 1000
-        }s (at ${deleteAt})`
-      );
       const t = setTimeout(() => {
         if (!io.sockets.adapter.rooms.get(room)) {
-          console.log(
-            `[ROOM ${room}] empty grace elapsed -> deleting room metadata`
-          );
           const ttlTimer = roomTtlTimers.get(room);
           if (ttlTimer) clearTimeout(ttlTimer);
           roomTtlTimers.delete(room);
@@ -68,7 +96,6 @@ function emitMembers(room) {
     if (et) {
       clearTimeout(et);
       emptyTimers.delete(room);
-      console.log(`[ROOM ${room}] repopulated -> canceled pending deletion`);
     }
     if (!roomTtlTimers.has(room)) {
       scheduleRoomTtl(room);
@@ -80,17 +107,9 @@ function scheduleRoomTtl(room) {
   if (roomTtlTimers.has(room)) return;
   roomCreatedAt.set(room, Date.now());
   const expireAt = new Date(Date.now() + ROOM_TTL_MS).toISOString();
-  console.log(
-    `[ROOM ${room}] TTL scheduled for ${(ROOM_TTL_MS / 60000).toFixed(
-      0
-    )} minutes (expires at ${expireAt})`
-  );
   const timer = setTimeout(() => {
     const set = io.sockets.adapter.rooms.get(room);
     if (set && set.size > 0) {
-      console.log(
-        `[ROOM ${room}] TTL expired -> forcing ${set.size} participant(s) to leave`
-      );
       for (const id of set) {
         const s = io.sockets.sockets.get(id);
         if (s) {
@@ -103,7 +122,6 @@ function scheduleRoomTtl(room) {
         }
       }
     } else {
-      console.log(`[ROOM ${room}] TTL expired with no participants`);
     }
     lockedRooms.delete(room);
     roomCreatedAt.delete(room);
@@ -114,33 +132,38 @@ function scheduleRoomTtl(room) {
 }
 
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
-
   socket.on("join", (room, username) => {
     try {
       const existing = io.sockets.adapter.rooms.get(room);
+      const existingSize = existing ? existing.size : 0;
+
       if (lockedRooms.has(room) && existing && existing.size > 0) {
         socket.emit("room-join-denied", "locked");
         return;
       }
-      socket.data.username = (username || "").trim() || socket.id;
+
+      socket.data.username = (username || "").trim().slice(0, 10) || socket.id;
+      socket.data.room = room;
+
       socket.join(room);
+
+      const newRoomSize = io.sockets.adapter.rooms.get(room)?.size || 0;
+
       io.in(room).emit("participant-joined", {
         id: socket.id,
         name: socket.data.username || socket.id,
         ts: Date.now(),
       });
+
       if (!existing || existing.size === 0) {
         const old = roomTtlTimers.get(room);
         if (old) {
           clearTimeout(old);
           roomTtlTimers.delete(room);
-          console.log(
-            `[ROOM ${room}] first member after empty -> restarting TTL`
-          );
         }
         scheduleRoomTtl(room);
       }
+
       emitMembers(room);
       socket.emit("room-join-ok", {
         locked: lockedRooms.has(room),
@@ -150,14 +173,17 @@ io.on("connection", (socket) => {
           : ROOM_TTL_MS,
       });
     } catch (e) {
-      console.warn("join error", e);
+      console.error(
+        `❌ [JOIN] Error for socket ${socket.id} joining room "${room}":`,
+        e
+      );
       socket.emit("room-join-denied", "error");
     }
   });
 
   socket.on("set-username", (room, username) => {
     try {
-      socket.data.username = (username || "").trim() || socket.id;
+      socket.data.username = (username || "").trim().slice(0, 10) || socket.id;
       emitMembers(room);
     } catch (e) {
       console.warn("set-username error", e);
@@ -183,7 +209,11 @@ io.on("connection", (socket) => {
   socket.on("raise-hand", (room) => {
     try {
       if (!socket.rooms.has(room)) return;
-      io.in(room).emit("raise-hand", { id: socket.id, ts: Date.now() });
+      io.in(room).emit("raise-hand", {
+        id: socket.id,
+        username: socket.data.username,
+        ts: Date.now(),
+      });
     } catch (e) {}
   });
 
@@ -192,6 +222,7 @@ io.on("connection", (socket) => {
       if (!socket.rooms.has(room)) return;
       io.in(room).emit("screen-share-stopped", {
         id: socket.id,
+        username: socket.data.username,
         ts: Date.now(),
       });
     } catch (e) {}
@@ -202,6 +233,7 @@ io.on("connection", (socket) => {
       if (!socket.rooms.has(room)) return;
       io.in(room).emit("screen-share-started", {
         id: socket.id,
+        username: socket.data.username,
         ts: Date.now(),
       });
     } catch (e) {}
@@ -253,14 +285,23 @@ io.on("connection", (socket) => {
 
   socket.on("leave", (room) => {
     try {
+      const beforeSize = io.sockets.adapter.rooms.get(room)?.size || 0;
       socket.leave(room);
+      socket.data.room = null;
+      const afterSize = io.sockets.adapter.rooms.get(room)?.size || 0;
+
       emitMembers(room);
       io.in(room).emit("participant-left", {
         id: socket.id,
         name: socket.data.username || socket.id,
         ts: Date.now(),
       });
-    } catch (e) {}
+    } catch (e) {
+      console.error(
+        `❌ [LEAVE] Error for socket ${socket.id} leaving room "${room}":`,
+        e
+      );
+    }
   });
 
   socket.on("offer", (room, description) => {
@@ -284,8 +325,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    for (const room of socket.rooms) {
-      if (room === socket.id) continue;
+    const room = socket.data.room;
+    if (room) {
+      const beforeSize = io.sockets.adapter.rooms.get(room)?.size || 0;
+
       emitMembers(room);
       try {
         io.in(room).emit("participant-left", {
@@ -293,7 +336,14 @@ io.on("connection", (socket) => {
           name: socket.data.username || socket.id,
           ts: Date.now(),
         });
-      } catch (e) {}
+      } catch (e) {
+        console.error(
+          `❌ [DISCONNECT] Error emitting participant-left for ${socket.id}:`,
+          e
+        );
+      }
+
+      const afterSize = io.sockets.adapter.rooms.get(room)?.size || 0;
     }
   });
 });

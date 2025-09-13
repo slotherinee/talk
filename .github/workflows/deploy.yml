@@ -1,0 +1,92 @@
+name: Deploy Talk App
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  deploy:
+    name: Deploy to Production Server
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: |
+          client/package-lock.json
+          server/package-lock.json
+
+    - name: Install client dependencies
+      run: |
+        cd client
+        npm ci
+
+    - name: Install server dependencies
+      run: |
+        cd server
+        npm ci
+
+    - name: Build client
+      run: |
+        cd client
+        npm run build
+
+    - name: Copy build to server folder
+      run: |
+        rm -rf server/dist
+        cp -r client/dist server/
+
+    - name: Deploy to remote server
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SERVER_PORT || 22 }}
+        script: |
+          # Navigate to app directory
+          cd ${{ secrets.APP_DIRECTORY || '/var/www/talk-app' }}
+          
+          # Pull latest changes
+          git pull origin main
+          
+          # Install/update dependencies for both client and server
+          cd client && npm ci
+          cd ../server && npm ci
+          
+          # Build client
+          cd ../client && npm run build
+          
+          # Copy build to server folder
+          rm -rf ../server/dist
+          cp -r dist ../server/
+          
+          # Restart PM2 process
+          pm2 restart talk-app || pm2 start server/server.js --name talk-app
+          
+          # Save PM2 configuration
+          pm2 save
+          
+          echo "Deployment completed successfully!"
+
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ ${{ job.status }} == 'success' ]; then
+          echo "✅ Deployment successful!"
+        else
+          echo "❌ Deployment failed!"
+          exit 1
+        fi
