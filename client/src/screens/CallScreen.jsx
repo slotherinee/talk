@@ -6,12 +6,12 @@ import SpeakingIndicator from "../components/SpeakingIndicator";
 import useMountTransition from "../hooks/useMountTransition";
 import { getSocket } from "../utils/socket";
 import { formatDuration, formatRemaining } from "../utils/helpers";
-import { 
-  LogOut, 
-  Settings, 
-  X, 
-  User, 
-  Hand, 
+import {
+  LogOut,
+  Settings,
+  X,
+  User,
+  Hand,
   MicOff,
   Mic,
   Video,
@@ -30,54 +30,54 @@ function CallScreen({
   members,
   remoteStreams,
   stream,
-  
+
   // user state
   username,
   micLevel,
   remoteLevels,
   handSignals,
-  
+
   // controls state
   micOn,
   camOn,
   sharing,
-  
+
   // media controls
   toggleMic,
   toggleCam,
   toggleScreenShare,
-  
+
   // room controls
   roomId,
   roomLocked,
   toggleRoomLock,
   raiseHand,
-  
+
   // notifications
   notifications,
   setNotifications,
   shareLinkFlipTs,
   setShareLinkFlipTs,
-  
+
   // participants
   participantsOpen,
   setParticipantsOpen,
-  
+
   // responsive
   isMobile,
   isTablet,
-  
+
   // tools
   toolsOpen,
   setToolsOpen,
-  
+
   // mic popover
   showMicPopover,
   setShowMicPopover,
   volume,
   setVolume,
   gainNodeRef,
-  
+
   // chat
   chatOpen,
   setChatOpen,
@@ -90,21 +90,21 @@ function CallScreen({
   chatEndRef,
   chatMobileContainerRef,
   chatDesktopContainerRef,
-  
+
   // time
   elapsed,
   remainingMs,
-  
+
   // cleanup function for leaving
   onLeave,
-  
+
   // peer connections
   pcs,
   setRemoteStreams,
-  setMembers
+  setMembers,
 }) {
   const socket = getSocket();
-  
+
   const toolsSheetVisible = useMountTransition(
     (isMobile || isTablet) && toolsOpen,
     300
@@ -122,59 +122,65 @@ function CallScreen({
     ...members.filter((m) => m.id !== socket?.id).map((m) => m.id),
     socket?.id,
   ];
-  
-  // flexbox: if <=2 participants, each in own row; else group by 2 per row
-  let flexIds = [];
-  if (participants.length <= 2) {
-    flexIds = participants.map(id => [id]);
-  } else {
-    for (let i = 0; i < participants.length; i += 2) {
-      const first = participants[i];
-      const second = participants[i + 1];
-      if (second !== undefined) {
-        flexIds.push([first, second]);
-      } else {
-        flexIds.push([first]);
-      }
-    }
-  }
+
+  // Grid layout: responsive participant cards with consistent sizing
+  const getGridLayout = (count) => {
+    if (count === 1) return "grid-cols-1";
+    if (count === 2) return "grid-cols-1 md:grid-cols-2";
+    if (count <= 4) return "grid-cols-2";
+    if (count <= 6) return "grid-cols-2 md:grid-cols-3";
+    if (count <= 9) return "grid-cols-2 md:grid-cols-3 lg:grid-cols-3";
+    return "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
+  };
 
   return (
     <div className="min-h-dvh min-w-screen bg-black text-neutral-100 relative overflow-hidden">
-      <div className="flex flex-col w-full h-screen overflow-y-auto">
-        {flexIds.map((row, rowIdx) => (
-          <div key={rowIdx} className="flex w-full flex-1">
-            {row.map((id, colIdx) => {
+      <div className="flex flex-col w-full h-screen">
+        {/* Participants Grid */}
+        <div className="flex-1 flex items-center justify-center p-4 overflow-y-auto">
+          <div
+            className={`grid ${getGridLayout(
+              participants.length
+            )} gap-4 w-full max-w-6xl mx-auto`}
+          >
+            {participants.map((id) => {
               const streamObj = id === socket?.id ? stream : remoteStreams[id];
-              const key = `p-${id}-${rowIdx}-${colIdx}`;
+              const key = `p-${id}`;
               const isLocal = id === socket?.id;
               const level = isLocal ? micLevel : remoteLevels[id] || 0;
               const speaking = level > 0.18;
               const memberObj = members.find((m) => m.id === id);
-              const rawName = id === socket?.id ? username || "" : memberObj?.name || "";
-              const displayName = rawName.trim() ? rawName.trim().slice(0, 10) : id?.substring(0, 4);
-              const muted = id === socket?.id ? !micOn : memberObj?.muted ?? false;
-              
+              const rawName =
+                id === socket?.id ? username || "" : memberObj?.name || "";
+              const displayName = rawName.trim()
+                ? rawName.trim().slice(0, 10)
+                : id?.substring(0, 4);
+              const muted =
+                id === socket?.id ? !micOn : memberObj?.muted ?? false;
+
+              const hasActiveVideo =
+                streamObj &&
+                streamObj.getVideoTracks &&
+                streamObj
+                  .getVideoTracks()
+                  .some((t) => t.readyState === "live" && t.enabled);
+
               return (
                 <div
                   key={key}
-                  className={`flex-1 min-w-0 relative bg-black flex items-center justify-center overflow-hidden border border-neutral-500/20 h-full`}
+                  className="relative bg-neutral-900 rounded-xl overflow-hidden border border-neutral-500/20 aspect-video max-w-sm mx-auto"
+                  style={{
+                    minHeight: isMobile ? "160px" : "200px",
+                    maxHeight: isMobile ? "200px" : "280px",
+                  }}
                 >
-                  {(() => {
-                    const hasActiveVideo =
-                      streamObj &&
-                      streamObj.getVideoTracks &&
-                      streamObj
-                        .getVideoTracks()
-                        .some((t) => t.readyState === "live" && t.enabled);
-                    return hasActiveVideo;
-                  })() ? (
-                    <SpeakingIndicator 
-                      speaking={speaking} 
-                      level={level}
-                      className="w-full h-full"
-                    >
-                      <div className="relative w-full h-full border border-neutral-500/20">
+                  <SpeakingIndicator
+                    speaking={speaking}
+                    level={level}
+                    className="w-full h-full rounded-xl"
+                  >
+                    {hasActiveVideo ? (
+                      <div className="relative w-full h-full">
                         <VideoTile stream={streamObj} muted={isLocal} />
                         {handSignals.some((h) => h.id === id) && (
                           <div className="absolute top-2 right-2 bg-amber-500/80 text-black text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow">
@@ -184,44 +190,45 @@ function CallScreen({
                           </div>
                         )}
                       </div>
-                    </SpeakingIndicator>
-                  ) : (
-                    <>
-                      {streamObj && streamObj.getAudioTracks().length > 0 && (
-                        <AudioSink stream={streamObj} muted={isLocal} />
-                      )}
-                      <div className="text-neutral-400 flex items-center justify-center w-full">
-                        <SpeakingIndicator 
-                          speaking={speaking} 
-                          level={level}
-                          className="rounded-full"
-                        >
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                        {streamObj && streamObj.getAudioTracks().length > 0 && (
+                          <AudioSink stream={streamObj} muted={isLocal} />
+                        )}
+                        <div className="flex flex-col items-center justify-center">
                           <div
-                            className={`relative w-12 h-12 rounded-full flex flex-col items-center justify-center text-sm font-semibold text-center transition-all border border-neutral-500/20 ${
+                            className={`relative w-16 h-16 rounded-full flex items-center justify-center text-lg font-semibold transition-all border border-neutral-500/20 ${
                               isLocal
-                                ? "bg-white/10 border border-white/40 text-white"
+                                ? "bg-white/10 border-white/40 text-white"
                                 : "bg-neutral-800"
                             }`}
                           >
-                            <User size={isMobile ? 14 : 18} className="opacity-80" />
+                            <User
+                              size={isMobile ? 20 : 24}
+                              className="opacity-80"
+                            />
                             {handSignals.some((h) => h.id === id) && (
-                              <div className="absolute -top-3 right-0 translate-x-1/3 bg-white/90 text-black text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
+                              <div className="absolute -top-2 right-0 translate-x-1/3 bg-amber-500/90 text-black text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow">
                                 <span className="hand-wave">
-                                  <Hand size={12} />
+                                  <Hand size={10} />
                                 </span>
                               </div>
                             )}
                           </div>
-                        </SpeakingIndicator>
+                        </div>
                       </div>
-                    </>
-                  )}
+                    )}
+                  </SpeakingIndicator>
+
+                  {/* User label */}
                   {isLocal && (
                     <div className="absolute top-2 left-2 bg-blue-600/80 text-white text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full shadow">
                       Вы
                     </div>
                   )}
-                  <div className="absolute bottom-2 left-2 bg-neutral-900/70 text-xs px-2 py-1 rounded flex items-center gap-1">
+
+                  {/* Name and mute indicator */}
+                  <div className="absolute bottom-2 left-2 bg-neutral-900/80 text-xs px-2 py-1 rounded flex items-center gap-1 backdrop-blur-sm">
                     {displayName}
                     {muted && <MicOff size={12} className="text-red-400" />}
                   </div>
@@ -229,7 +236,7 @@ function CallScreen({
               );
             })}
           </div>
-        ))}
+        </div>
       </div>
 
       <div className="absolute top-4 right-4">
@@ -386,8 +393,7 @@ function CallScreen({
                       <Share2
                         size={18}
                         className={`${
-                          shareLinkFlipTs &&
-                          Date.now() - shareLinkFlipTs < 1000
+                          shareLinkFlipTs && Date.now() - shareLinkFlipTs < 1000
                             ? "icon-share-flip-once"
                             : ""
                         }`}
@@ -495,7 +501,7 @@ function CallScreen({
           )}
         </>
       )}
-      
+
       {!isMobile && !isTablet && participantsOpen && (
         <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-64 max-h-64 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-lg shadow-lg p-3 flex flex-col gap-2 text-sm">
           <div className="font-semibold text-neutral-200 mb-1 flex items-center gap-2">
@@ -553,7 +559,10 @@ function CallScreen({
                 <X size={16} />
               </button>
             </div>
-            <div ref={chatDesktopContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
+            <div
+              ref={chatDesktopContainerRef}
+              className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm"
+            >
               {chatMessages.length === 0 ? (
                 <div className="text-neutral-500 text-center mt-8 text-xs">
                   Пока нет сообщений
