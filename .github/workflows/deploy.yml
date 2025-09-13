@@ -73,11 +73,17 @@ jobs:
             rm -rf ../server/dist
             cp -r dist ../server/
 
-            # Restart PM2 process
-            pm2 restart talk-app || pm2 start server/server.js --name talk-app
+            # Create logs directory if it doesn't exist
+            mkdir -p logs
+
+            # Use PM2 ecosystem file for restart
+            pm2 reload ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
 
             # Save PM2 configuration
             pm2 save
+
+            # Restart nginx (if needed)
+            sudo systemctl reload nginx || sudo service nginx reload
 
             echo "Deployment completed successfully!"
 
