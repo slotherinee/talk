@@ -23,6 +23,7 @@ function PrecallScreen({
   currentVideoDevice,
   onAudioDeviceSelect,
   onVideoDeviceSelect,
+  onInitializeDevices,
 }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-dvh bg-black px-4">
@@ -59,6 +60,7 @@ function PrecallScreen({
             onDeviceSelect={onAudioDeviceSelect}
             type="audio"
             className="flex-1"
+            onInitializeDevices={onInitializeDevices}
           />
 
           <DualButton
@@ -81,6 +83,7 @@ function PrecallScreen({
             onDeviceSelect={onVideoDeviceSelect}
             type="video"
             className="flex-1"
+            onInitializeDevices={onInitializeDevices}
           />
         </div>
 

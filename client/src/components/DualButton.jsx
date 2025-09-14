@@ -11,8 +11,16 @@ function DualButton({
   type,
   disabled = false,
   className = "",
+  onInitializeDevices,
 }) {
   const [showDevices, setShowDevices] = useState(false);
+
+  const handleDeviceButtonClick = async () => {
+    if (devices.length === 0 && onInitializeDevices) {
+      await onInitializeDevices();
+    }
+    setShowDevices(!showDevices);
+  };
 
   return (
     <div className={`flex ${className}`}>
@@ -23,8 +31,8 @@ function DualButton({
       <div className="relative">
         <Button
           variant="outline"
-          onClick={() => setShowDevices(!showDevices)}
-          disabled={disabled || devices.length === 0}
+          onClick={handleDeviceButtonClick}
+          disabled={disabled}
           className="!px-2 !py-2 border-l-0 rounded-l-none h-full"
         >
           <ChevronDown

@@ -109,7 +109,6 @@ export default function App() {
   const [currentAudioDevice, setCurrentAudioDevice] = useState("");
   const [currentVideoDevice, setCurrentVideoDevice] = useState("");
   const [currentOutputDevice, setCurrentOutputDevice] = useState("");
-  const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
 
   useEffect(() => {
     const onResize = () => {
@@ -352,37 +351,30 @@ export default function App() {
     });
   }, [members]);
 
-  // Device initialization - load available devices on mount
-  useEffect(() => {
-    const initializeDevices = async () => {
-      try {
-        const devices = await getUserDevices();
-        setAudioDevices(devices.audioInput);
-        setVideoDevices(devices.videoInput);
-        setOutputDevices(devices.audioOutput);
+  const initializeDevices = async () => {
+    if (audioDevices.length > 0) return;
 
-        // Set current devices from getUserMedia constraints or first available
-        if (devices.audioInput.length > 0 && !currentAudioDevice) {
-          setCurrentAudioDevice(devices.audioInput[0].deviceId);
-        }
-        if (devices.videoInput.length > 0 && !currentVideoDevice) {
-          setCurrentVideoDevice(devices.videoInput[0].deviceId);
-        }
-        if (devices.audioOutput.length > 0 && !currentOutputDevice) {
-          setCurrentOutputDevice(devices.audioOutput[0].deviceId);
-        }
-      } catch (error) {
-        console.warn("Failed to initialize devices:", error);
+    try {
+      const devices = await getUserDevices();
+      setAudioDevices(devices.audioInput);
+      setVideoDevices(devices.videoInput);
+      setOutputDevices(devices.audioOutput);
+
+      if (devices.audioInput.length > 0 && !currentAudioDevice) {
+        setCurrentAudioDevice(devices.audioInput[0].deviceId);
       }
-    };
-
-    if (screen === "precall" || screen === "call") {
-      initializeDevices();
+      if (devices.videoInput.length > 0 && !currentVideoDevice) {
+        setCurrentVideoDevice(devices.videoInput[0].deviceId);
+      }
+      if (devices.audioOutput.length > 0 && !currentOutputDevice) {
+        setCurrentOutputDevice(devices.audioOutput[0].deviceId);
+      }
+    } catch (error) {
+      console.warn("Failed to initialize devices:", error);
     }
-  }, [screen, currentAudioDevice, currentVideoDevice, currentOutputDevice]);
-
+  };
   useEffect(() => {
-    if (!handSignals.length) return; // nothing active
+    if (!handSignals.length) return;
     const t = setInterval(() => {
       const now = Date.now();
       setHandSignals((list) => list.filter((h) => h.expires > now));
@@ -1037,6 +1029,7 @@ export default function App() {
         currentVideoDevice={currentVideoDevice}
         onAudioDeviceSelect={handleAudioDeviceSelect}
         onVideoDeviceSelect={handleVideoDeviceSelect}
+        onInitializeDevices={initializeDevices}
       />
     );
   }
@@ -1105,9 +1098,6 @@ export default function App() {
         pcs={pcs}
         setRemoteStreams={setRemoteStreams}
         setMembers={setMembers}
-        deviceSettingsOpen={deviceSettingsOpen}
-        onDeviceSettingsOpen={() => setDeviceSettingsOpen(true)}
-        onDeviceSettingsClose={() => setDeviceSettingsOpen(false)}
         audioDevices={audioDevices}
         videoDevices={videoDevices}
         outputDevices={outputDevices}
@@ -1117,6 +1107,7 @@ export default function App() {
         onAudioDeviceSelect={handleAudioDeviceSelect}
         onVideoDeviceSelect={handleVideoDeviceSelect}
         onOutputDeviceSelect={handleOutputDeviceSelect}
+        onInitializeDevices={initializeDevices}
       />
     );
   }

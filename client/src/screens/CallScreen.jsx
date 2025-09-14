@@ -25,6 +25,7 @@ import {
   Unlock,
   MessageSquare,
   Headphones,
+  RotateCcw,
 } from "lucide-react";
 import MicActivityDot from "../components/MicActivityDot";
 
@@ -117,6 +118,7 @@ function CallScreen({
   onAudioDeviceSelect,
   onVideoDeviceSelect,
   onOutputDeviceSelect,
+  onInitializeDevices,
 }) {
   const socket = getSocket();
 
@@ -134,6 +136,13 @@ function CallScreen({
   );
 
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
+
+  const handleOpenDeviceSettings = async () => {
+    if (onInitializeDevices) {
+      await onInitializeDevices();
+    }
+    setDeviceSettingsOpen(true);
+  };
 
   const participants = [
     ...members.filter((m) => m.id !== socket?.id).map((m) => m.id),
@@ -162,7 +171,7 @@ function CallScreen({
   const gridLayout = getOptimalGrid(participants.length);
 
   return (
-    <div className="min-h-dvh min-w-screen bg-black text-neutral-100 relative overflow-hidden">
+    <div className="min-h-screen min-w-screen bg-black text-neutral-100 relative overflow-hidden">
       <div
         className="w-full h-screen grid"
         style={{
@@ -198,26 +207,20 @@ function CallScreen({
                     .some((t) => t.readyState === "live" && t.enabled);
                 return hasActiveVideo;
               })() ? (
-                <SpeakingIndicator
-                  speaking={speaking}
-                  level={level}
-                  className="w-full h-full"
-                >
-                  <div className="relative w-full h-full border border-neutral-500/20">
-                    <VideoTile
-                      stream={streamObj}
-                      muted={isLocal}
-                      isScreenShare={isLocal && sharing}
-                    />
-                    {handSignals.some((h) => h.id === id) && (
-                      <div className="absolute top-2 right-2 bg-amber-500/80 text-black text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow">
-                        <span className="hand-wave">
-                          <Hand size={14} />
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </SpeakingIndicator>
+                <div className="relative w-full h-full border border-neutral-500/20">
+                  <VideoTile
+                    stream={streamObj}
+                    muted={isLocal}
+                    isScreenShare={isLocal && sharing}
+                  />
+                  {handSignals.some((h) => h.id === id) && (
+                    <div className="absolute top-2 right-2 bg-amber-500/80 text-black text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow">
+                      <span className="hand-wave">
+                        <Hand size={14} />
+                      </span>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
                   {streamObj && streamObj.getAudioTracks().length > 0 && (
@@ -261,6 +264,15 @@ function CallScreen({
                 {displayName}
                 {muted && <MicOff size={12} className="text-red-400" />}
               </div>
+              {isLocal && camOn && (
+                <Button
+                  variant="outline"
+                  className="absolute bottom-2 right-2 !p-1.5 !min-w-0 bg-neutral-900/70 border-neutral-700 hover:bg-neutral-800/70"
+                  onClick={switchCamera}
+                >
+                  <RotateCcw size={12} />
+                </Button>
+              )}
             </div>
           );
         })}
@@ -308,7 +320,7 @@ function CallScreen({
         formatRemaining={formatRemaining}
         isMobile={isMobile}
         isTablet={isTablet}
-        onDeviceSettingsOpen={() => setDeviceSettingsOpen(true)}
+        onDeviceSettingsOpen={handleOpenDeviceSettings}
       />
 
       {(isMobile || isTablet) && (
@@ -489,7 +501,7 @@ function CallScreen({
                     <Button
                       variant="outline"
                       className="!p-3 w-12 h-12"
-                      onClick={() => setDeviceSettingsOpen(true)}
+                      onClick={handleOpenDeviceSettings}
                       aria-label="Настройки устройств"
                     >
                       <Headphones size={18} />
