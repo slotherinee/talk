@@ -381,3 +381,101 @@ export const createScreenShareToggler = (
     }
   };
 };
+
+export const createCameraSwitcher = (
+  camOn,
+  localVideoTrackRef,
+  stream,
+  setStream,
+  pcs,
+  renegotiateWith
+) => {
+  return async () => {
+    if (!camOn || !localVideoTrackRef.current) return;
+
+    try {
+      const currentTrack = localVideoTrackRef.current;
+      const currentConstraints = currentTrack.getConstraints();
+      const currentFacingMode = currentConstraints.facingMode;
+
+      let newFacingMode = "user";
+      if (currentFacingMode === "user" || currentFacingMode?.exact === "user") {
+        newFacingMode = "environment";
+      } else if (
+        currentFacingMode === "environment" ||
+        currentFacingMode?.exact === "environment"
+      ) {
+        newFacingMode = "user";
+      }
+
+      currentTrack.stop();
+
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { exact: newFacingMode },
+        },
+      });
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      localVideoTrackRef.current = newVideoTrack;
+
+      if (stream) {
+        const audioTracks = stream.getAudioTracks();
+        const updatedStream = new MediaStream([...audioTracks, newVideoTrack]);
+        setStream(updatedStream);
+      } else {
+        setStream(new MediaStream([newVideoTrack]));
+      }
+
+      Object.entries(pcs.current).forEach(([peerId, pc]) => {
+        try {
+          const sender = pc
+            .getSenders()
+            .find((s) => s.track && s.track.kind === "video");
+          if (sender) {
+            sender.replaceTrack(newVideoTrack).catch(() => {});
+          } else {
+            pc.addTrack(newVideoTrack, new MediaStream([newVideoTrack]));
+          }
+          setTimeout(() => renegotiateWith(peerId), 100);
+        } catch (e) {
+          console.warn("Failed to update peer connection with new camera", e);
+        }
+      });
+    } catch (e) {
+      console.warn("Camera switch failed", e);
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+        });
+        const fallbackTrack = fallbackStream.getVideoTracks()[0];
+        localVideoTrackRef.current = fallbackTrack;
+
+        if (stream) {
+          const audioTracks = stream.getAudioTracks();
+          const updatedStream = new MediaStream([
+            ...audioTracks,
+            fallbackTrack,
+          ]);
+          setStream(updatedStream);
+        } else {
+          setStream(new MediaStream([fallbackTrack]));
+        }
+
+        Object.entries(pcs.current).forEach(([peerId, pc]) => {
+          try {
+            const sender = pc
+              .getSenders()
+              .find((s) => s.track && s.track.kind === "video");
+            if (sender) {
+              sender.replaceTrack(fallbackTrack).catch(() => {});
+            }
+            setTimeout(() => renegotiateWith(peerId), 100);
+          } catch (e) {}
+        });
+      } catch (fallbackError) {
+        console.warn("Camera switch fallback failed", fallbackError);
+      }
+    }
+  };
+};

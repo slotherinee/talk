@@ -1,8 +1,10 @@
+import { useState } from "react";
 import VideoTile from "../components/VideoTile";
 import AudioSink from "../components/AudioSink";
 import Button from "../components/Button";
 import CallControls from "../components/CallControls";
 import SpeakingIndicator from "../components/SpeakingIndicator";
+import DeviceSettings from "../components/DeviceSettings";
 import useMountTransition from "../hooks/useMountTransition";
 import { getSocket } from "../utils/socket";
 import { formatDuration, formatRemaining } from "../utils/helpers";
@@ -22,6 +24,7 @@ import {
   Lock,
   Unlock,
   MessageSquare,
+  Headphones,
 } from "lucide-react";
 import MicActivityDot from "../components/MicActivityDot";
 
@@ -45,6 +48,7 @@ function CallScreen({
   // media controls
   toggleMic,
   toggleCam,
+  switchCamera,
   toggleScreenShare,
 
   // room controls
@@ -102,6 +106,17 @@ function CallScreen({
   pcs,
   setRemoteStreams,
   setMembers,
+
+  // device settings
+  audioDevices = [],
+  videoDevices = [],
+  outputDevices = [],
+  currentAudioDevice,
+  currentVideoDevice,
+  currentOutputDevice,
+  onAudioDeviceSelect,
+  onVideoDeviceSelect,
+  onOutputDeviceSelect,
 }) {
   const socket = getSocket();
 
@@ -118,125 +133,137 @@ function CallScreen({
     300
   );
 
+  const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
+
   const participants = [
     ...members.filter((m) => m.id !== socket?.id).map((m) => m.id),
     socket?.id,
   ];
 
-  // flexbox: if <=2 participants, each in own row; else group by 2 per row
-  let flexIds = [];
-  if (participants.length <= 2) {
-    flexIds = participants.map((id) => [id]);
-  } else {
-    for (let i = 0; i < participants.length; i += 2) {
-      const first = participants[i];
-      const second = participants[i + 1];
-      if (second !== undefined) {
-        flexIds.push([first, second]);
-      } else {
-        flexIds.push([first]);
-      }
-    }
-  }
+  // Calculate optimal grid layout like Google Meet
+  const getOptimalGrid = (count) => {
+    if (count === 0) return { cols: 1, rows: 1 };
+    if (count === 1) return { cols: 1, rows: 1 };
+    if (count === 2) return { cols: 1, rows: 2 };
+    if (count === 3 || count === 4) return { cols: 2, rows: 2 };
+    if (count <= 6) return { cols: 2, rows: 3 };
+    if (count <= 9) return { cols: 3, rows: 3 };
+    if (count <= 12) return { cols: 3, rows: 4 };
+    if (count <= 16) return { cols: 4, rows: 4 };
+    if (count <= 20) return { cols: 4, rows: 5 };
+    if (count <= 25) return { cols: 5, rows: 5 };
+
+    // For more than 25 participants, use square grid
+    const cols = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / cols);
+    return { cols, rows };
+  };
+
+  const gridLayout = getOptimalGrid(participants.length);
 
   return (
     <div className="min-h-dvh min-w-screen bg-black text-neutral-100 relative overflow-hidden">
-      <div className="flex flex-col w-full h-screen overflow-y-auto">
-        {flexIds.map((row, rowIdx) => (
-          <div key={rowIdx} className="flex w-full flex-1">
-            {row.map((id, colIdx) => {
-              const streamObj = id === socket?.id ? stream : remoteStreams[id];
-              const key = `p-${id}-${rowIdx}-${colIdx}`;
-              const isLocal = id === socket?.id;
-              const level = isLocal ? micLevel : remoteLevels[id] || 0;
-              const speaking = level > 0.18;
-              const memberObj = members.find((m) => m.id === id);
-              const rawName =
-                id === socket?.id ? username || "" : memberObj?.name || "";
-              const displayName = rawName.trim()
-                ? rawName.trim().slice(0, 10)
-                : id?.substring(0, 4);
-              const muted =
-                id === socket?.id ? !micOn : memberObj?.muted ?? false;
+      <div
+        className="w-full h-screen grid"
+        style={{
+          gridTemplateColumns: `repeat(${gridLayout.cols}, 1fr)`,
+          gridTemplateRows: `repeat(${gridLayout.rows}, 1fr)`,
+        }}
+      >
+        {participants.map((id) => {
+          const streamObj = id === socket?.id ? stream : remoteStreams[id];
+          const key = `p-${id}`;
+          const isLocal = id === socket?.id;
+          const level = isLocal ? micLevel : remoteLevels[id] || 0;
+          const speaking = level > 0.18;
+          const memberObj = members.find((m) => m.id === id);
+          const rawName =
+            id === socket?.id ? username || "" : memberObj?.name || "";
+          const displayName = rawName.trim()
+            ? rawName.trim().slice(0, 10)
+            : id?.substring(0, 4);
+          const muted = id === socket?.id ? !micOn : memberObj?.muted ?? false;
 
-              return (
-                <div
-                  key={key}
-                  className={`flex-1 min-w-0 relative bg-black flex items-center justify-center overflow-hidden border border-neutral-500/20 h-full`}
+          return (
+            <div
+              key={key}
+              className="relative bg-black flex items-center justify-center overflow-hidden border border-neutral-500/20 min-h-0"
+            >
+              {(() => {
+                const hasActiveVideo =
+                  streamObj &&
+                  streamObj.getVideoTracks &&
+                  streamObj
+                    .getVideoTracks()
+                    .some((t) => t.readyState === "live" && t.enabled);
+                return hasActiveVideo;
+              })() ? (
+                <SpeakingIndicator
+                  speaking={speaking}
+                  level={level}
+                  className="w-full h-full"
                 >
-                  {(() => {
-                    const hasActiveVideo =
-                      streamObj &&
-                      streamObj.getVideoTracks &&
-                      streamObj
-                        .getVideoTracks()
-                        .some((t) => t.readyState === "live" && t.enabled);
-                    return hasActiveVideo;
-                  })() ? (
+                  <div className="relative w-full h-full border border-neutral-500/20">
+                    <VideoTile
+                      stream={streamObj}
+                      muted={isLocal}
+                      isScreenShare={isLocal && sharing}
+                    />
+                    {handSignals.some((h) => h.id === id) && (
+                      <div className="absolute top-2 right-2 bg-amber-500/80 text-black text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow">
+                        <span className="hand-wave">
+                          <Hand size={14} />
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </SpeakingIndicator>
+              ) : (
+                <>
+                  {streamObj && streamObj.getAudioTracks().length > 0 && (
+                    <AudioSink stream={streamObj} muted={isLocal} />
+                  )}
+                  <div className="text-neutral-400 flex items-center justify-center w-full">
                     <SpeakingIndicator
                       speaking={speaking}
                       level={level}
-                      className="w-full h-full"
+                      className="rounded-full"
                     >
-                      <div className="relative w-full h-full border border-neutral-500/20">
-                        <VideoTile stream={streamObj} muted={isLocal} />
+                      <div
+                        className={`relative w-12 h-12 rounded-full flex flex-col items-center justify-center text-sm font-semibold text-center transition-all border border-neutral-500/20 ${
+                          isLocal
+                            ? "bg-white/10 border border-white/40 text-white"
+                            : "bg-neutral-800"
+                        }`}
+                      >
+                        <User
+                          size={isMobile ? 14 : 18}
+                          className="opacity-80"
+                        />
                         {handSignals.some((h) => h.id === id) && (
-                          <div className="absolute top-2 right-2 bg-amber-500/80 text-black text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow">
+                          <div className="absolute -top-3 right-0 translate-x-1/3 bg-white/90 text-black text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
                             <span className="hand-wave">
-                              <Hand size={14} />
+                              <Hand size={12} />
                             </span>
                           </div>
                         )}
                       </div>
                     </SpeakingIndicator>
-                  ) : (
-                    <>
-                      {streamObj && streamObj.getAudioTracks().length > 0 && (
-                        <AudioSink stream={streamObj} muted={isLocal} />
-                      )}
-                      <div className="text-neutral-400 flex items-center justify-center w-full">
-                        <SpeakingIndicator
-                          speaking={speaking}
-                          level={level}
-                          className="rounded-full"
-                        >
-                          <div
-                            className={`relative w-12 h-12 rounded-full flex flex-col items-center justify-center text-sm font-semibold text-center transition-all border border-neutral-500/20 ${
-                              isLocal
-                                ? "bg-white/10 border border-white/40 text-white"
-                                : "bg-neutral-800"
-                            }`}
-                          >
-                            <User
-                              size={isMobile ? 14 : 18}
-                              className="opacity-80"
-                            />
-                            {handSignals.some((h) => h.id === id) && (
-                              <div className="absolute -top-3 right-0 translate-x-1/3 bg-white/90 text-black text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
-                                <span className="hand-wave">
-                                  <Hand size={12} />
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </SpeakingIndicator>
-                      </div>
-                    </>
-                  )}
-                  {isLocal && (
-                    <div className="absolute top-2 left-2 bg-blue-600/80 text-white text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full shadow">
-                      Вы
-                    </div>
-                  )}
-                  <div className="absolute bottom-2 left-2 bg-neutral-900/70 text-xs px-2 py-1 rounded flex items-center gap-1">
-                    {displayName}
-                    {muted && <MicOff size={12} className="text-red-400" />}
                   </div>
+                </>
+              )}
+              {isLocal && (
+                <div className="absolute top-2 left-2 bg-blue-600/80 text-white text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full shadow">
+                  Вы
                 </div>
-              );
-            })}
-          </div>
-        ))}
+              )}
+              <div className="absolute bottom-2 left-2 bg-neutral-900/70 text-xs px-2 py-1 rounded flex items-center gap-1">
+                {displayName}
+                {muted && <MicOff size={12} className="text-red-400" />}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="absolute top-4 right-4">
@@ -281,6 +308,7 @@ function CallScreen({
         formatRemaining={formatRemaining}
         isMobile={isMobile}
         isTablet={isTablet}
+        onDeviceSettingsOpen={() => setDeviceSettingsOpen(true)}
       />
 
       {(isMobile || isTablet) && (
@@ -289,7 +317,7 @@ function CallScreen({
             <button
               aria-label="Tools"
               onClick={() => setToolsOpen(true)}
-              className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-neutral-900 border border-neutral-700 rounded-full w-12 h-12 flex items-center justify-center text-neutral-200 shadow-lg active:scale-95"
+              className="fixed bottom-2 left-1/2 -translate-x-1/2 bg-neutral-900 border border-neutral-700 rounded-full w-12 h-12 flex items-center justify-center text-neutral-200 shadow-lg active:scale-95"
             >
               <span className="relative inline-flex">
                 <Settings size={20} />
@@ -326,7 +354,7 @@ function CallScreen({
                     <X size={18} />
                   </button>
                 </div>
-                <div className="grid grid-cols-4 gap-3 text-[11px] font-medium text-neutral-300">
+                <div className="grid grid-cols-3 gap-3 text-[11px] font-medium text-neutral-300">
                   <div className="flex flex-col items-center gap-1">
                     <Button
                       variant={micOn ? "default" : "outline"}
@@ -352,19 +380,22 @@ function CallScreen({
                     </Button>
                     <span>Кам</span>
                   </div>
-                  <div className="flex flex-col items-center gap-1">
-                    <Button
-                      variant={sharing ? "default" : "outline"}
-                      className="!p-3 w-12 h-12"
-                      onClick={toggleScreenShare}
-                    >
-                      <MonitorUp
-                        size={18}
-                        className={sharing ? "icon-speaking-pulse" : ""}
-                      />
-                    </Button>
-                    <span>Экран</span>
-                  </div>
+                  {/* Screen sharing не поддерживается на мобильных устройствах из-за ограничений браузеров */}
+                  {!isMobile && !isTablet && (
+                    <div className="flex flex-col items-center gap-1">
+                      <Button
+                        variant={sharing ? "default" : "outline"}
+                        className="!p-3 w-12 h-12"
+                        onClick={toggleScreenShare}
+                      >
+                        <MonitorUp
+                          size={18}
+                          className={sharing ? "icon-speaking-pulse" : ""}
+                        />
+                      </Button>
+                      <span>Экран</span>
+                    </div>
+                  )}
                   <div className="flex flex-col items-center gap-1">
                     <Button
                       variant="outline"
@@ -455,6 +486,17 @@ function CallScreen({
                     <span>Чат</span>
                   </div>
                   <div className="flex flex-col items-center gap-1">
+                    <Button
+                      variant="outline"
+                      className="!p-3 w-12 h-12"
+                      onClick={() => setDeviceSettingsOpen(true)}
+                      aria-label="Настройки устройств"
+                    >
+                      <Headphones size={18} />
+                    </Button>
+                    <span>Устр</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
                     <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-neutral-800 text-[10px] leading-tight">
                       <div className="text-center">
                         <div>{formatDuration(elapsed)}</div>
@@ -468,7 +510,7 @@ function CallScreen({
                     <span>Время</span>
                   </div>
                 </div>
-                <div className="mt-4 flex justify-center">
+                <div className="mt-4 flex justify-center items-center gap-4">
                   <MicActivityDot level={micLevel} muted={!micOn} />
                 </div>
                 {participantsOpen && (
@@ -694,6 +736,23 @@ function CallScreen({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Device Settings Modal */}
+      {deviceSettingsOpen && (
+        <DeviceSettings
+          isOpen={deviceSettingsOpen}
+          onClose={() => setDeviceSettingsOpen(false)}
+          audioDevices={audioDevices}
+          videoDevices={videoDevices}
+          outputDevices={outputDevices}
+          currentAudioDevice={currentAudioDevice}
+          currentVideoDevice={currentVideoDevice}
+          currentOutputDevice={currentOutputDevice}
+          onAudioDeviceSelect={onAudioDeviceSelect}
+          onVideoDeviceSelect={onVideoDeviceSelect}
+          onOutputDeviceSelect={onOutputDeviceSelect}
+        />
       )}
     </div>
   );

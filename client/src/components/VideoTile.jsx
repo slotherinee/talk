@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
 
-function VideoTile({ stream, muted }) {
+function VideoTile({ stream, muted, isScreenShare = false }) {
   const ref = useRef();
   useEffect(() => {
     if (ref.current) {
@@ -20,7 +20,9 @@ function VideoTile({ stream, muted }) {
       autoPlay
       playsInline
       muted={muted}
-      className="transform -scale-x-100"
+      className={`size-full object-cover object-center ${
+        isScreenShare ? "" : "transform -scale-x-100"
+      }`}
     />
   );
 }

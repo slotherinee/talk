@@ -1,9 +1,10 @@
 import Button from "../components/Button";
 import Input from "../components/Input";
 import MicActivityDot from "../components/MicActivityDot";
+import DualButton from "../components/DualButton";
 import { Mic, MicOff, Video, VideoOff } from "lucide-react";
 
-function PrecallScreen({ 
+function PrecallScreen({
   micOn,
   camOn,
   micLevel,
@@ -14,7 +15,14 @@ function PrecallScreen({
   startCall,
   roomId,
   tempName,
-  setTempName
+  setTempName,
+  // Device selection props
+  audioDevices = [],
+  videoDevices = [],
+  currentAudioDevice,
+  currentVideoDevice,
+  onAudioDeviceSelect,
+  onVideoDeviceSelect,
 }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-dvh bg-black px-4">
@@ -22,7 +30,7 @@ function PrecallScreen({
         <h2 className="text-2xl font-bold mb-4 text-neutral-100">
           Настройка перед звонком
         </h2>
-        
+
         <div className="mb-4">
           <Input
             type="text"
@@ -32,35 +40,50 @@ function PrecallScreen({
             maxLength={10}
           />
         </div>
-        
+
         <div className="flex flex-col gap-4 mb-4">
-          <div className="flex gap-3 items-center">
-            <Button
-              variant={micOn ? "default" : "outline"}
-              className="w-full"
-              onClick={toggleMic}
-            >
-              {micOn ? <Mic size={16} /> : <MicOff size={16} />}
-              Микрофон
-              <MicActivityDot level={micLevel} muted={!micOn} />
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant={camOn ? "default" : "outline"}
-              className="w-full"
-              onClick={toggleCam}
-            >
-              {camOn ? (
-                <Video size={16} className="icon-speaking-pulse" />
-              ) : (
-                <VideoOff size={16} />
-              )}
-              {camOn ? "Камера: Вкл" : "Камера: Выкл"}
-            </Button>
-          </div>
+          <DualButton
+            mainButton={
+              <Button
+                variant={micOn ? "default" : "outline"}
+                className="w-full rounded-r-none"
+                onClick={toggleMic}
+              >
+                {micOn ? <Mic size={16} /> : <MicOff size={16} />}
+                Микрофон
+                <MicActivityDot level={micLevel} muted={!micOn} />
+              </Button>
+            }
+            devices={audioDevices}
+            currentDeviceId={currentAudioDevice}
+            onDeviceSelect={onAudioDeviceSelect}
+            type="audio"
+            className="flex-1"
+          />
+
+          <DualButton
+            mainButton={
+              <Button
+                variant={camOn ? "default" : "outline"}
+                className="w-full rounded-r-none"
+                onClick={toggleCam}
+              >
+                {camOn ? (
+                  <Video size={16} className="icon-speaking-pulse" />
+                ) : (
+                  <VideoOff size={16} />
+                )}
+                {camOn ? "Камера: Вкл" : "Камера: Выкл"}
+              </Button>
+            }
+            devices={videoDevices}
+            currentDeviceId={currentVideoDevice}
+            onDeviceSelect={onVideoDeviceSelect}
+            type="video"
+            className="flex-1"
+          />
         </div>
-        
+
         <div className="mb-4 flex justify-center">
           {camOn ? (
             <video
@@ -76,11 +99,11 @@ function PrecallScreen({
             </div>
           )}
         </div>
-        
+
         <Button className="w-full" onClick={startCall}>
           Войти в звонок
         </Button>
-        
+
         <div className="text-xs text-neutral-600 mt-3 break-all">
           Ссылка: {window.location.origin}/{roomId}
         </div>

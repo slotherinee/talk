@@ -8,35 +8,58 @@ export const createPeerConnectionFor = (
   watchRemoteStream
 ) => {
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+    ],
   });
+
   const socketInstance = getSocket();
   politeRef.current[id] = String(socketInstance?.id || "") < String(id);
+
   pc.onicecandidate = (e) => {
     if (e.candidate) {
       const currentSocket = getSocket();
-      if (currentSocket) currentSocket.emit("candidate-to", id, e.candidate);
+      if (currentSocket) {
+        currentSocket.emit("candidate-to", id, e.candidate);
+      }
     }
   };
+
   pc.ontrack = (e) => {
     setRemoteStreams((prev) => {
       let peerStream = prev[id] || new MediaStream();
       if (e.track && !peerStream.getTracks().some((t) => t.id === e.track.id)) {
         try {
           peerStream.addTrack(e.track);
-        } catch (_) {}
+        } catch (error) {
+          console.warn("Failed to add track:", error);
+        }
       }
       if (peerStream.getAudioTracks().length > 0) {
         try {
           setupRemoteAnalyser(id, peerStream);
-        } catch (_) {}
+        } catch (error) {
+          console.warn("Failed to setup remote analyser:", error);
+        }
       }
       try {
         watchRemoteStream(id, peerStream);
-      } catch (_) {}
+      } catch (error) {
+        console.warn("Failed to watch remote stream:", error);
+      }
       return { ...prev, [id]: peerStream };
     });
   };
+
+  pc.onconnectionstatechange = () => {
+    console.log("Connection state for", id, ":", pc.connectionState);
+    if (pc.connectionState === "failed") {
+      console.warn("Connection failed for", id, "attempting restart");
+      pc.restartIce();
+    }
+  };
+
   pcs.current[id] = pc;
   return pc;
 };
@@ -91,39 +114,55 @@ export const addLocalTracksToPc = (
 ) => {
   if (!pc) return;
   try {
-    if (localAudioTrackRef.current) {
+    if (
+      localAudioTrackRef.current &&
+      localAudioTrackRef.current.readyState === "live"
+    ) {
       const senders = pc.getSenders();
       const existing = senders.find((s) => s.track && s.track.kind === "audio");
       if (existing) {
         try {
           existing.replaceTrack(localAudioTrackRef.current);
-        } catch (e) {}
+        } catch (e) {
+          console.warn("Failed to replace audio track:", e);
+        }
       } else {
         try {
           pc.addTrack(
             localAudioTrackRef.current,
             new MediaStream([localAudioTrackRef.current])
           );
-        } catch (e) {}
+        } catch (e) {
+          console.warn("Failed to add audio track:", e);
+        }
       }
     }
+
     const activeVideoTrack =
-      sharing && screenTrackRef.current
+      sharing &&
+      screenTrackRef.current &&
+      screenTrackRef.current.readyState === "live"
         ? screenTrackRef.current
-        : localVideoTrackRef.current && localVideoTrackRef.current.enabled
+        : localVideoTrackRef.current &&
+          localVideoTrackRef.current.readyState === "live"
         ? localVideoTrackRef.current
         : null;
+
     if (activeVideoTrack) {
       const senders = pc.getSenders();
       const existing = senders.find((s) => s.track && s.track.kind === "video");
       if (existing) {
         try {
           existing.replaceTrack(activeVideoTrack);
-        } catch (e) {}
+        } catch (e) {
+          console.warn("Failed to replace video track:", e);
+        }
       } else {
         try {
           pc.addTrack(activeVideoTrack, new MediaStream([activeVideoTrack]));
-        } catch (e) {}
+        } catch (e) {
+          console.warn("Failed to add video track:", e);
+        }
       }
     }
   } catch (e) {
@@ -187,24 +226,35 @@ export const handleOffer = async (
 ) => {
   let pc = pcs.current[id];
   if (!pc) pc = createPeerConnectionForFn(id);
+
   const polite = politeRef.current[id];
   const offerCollision =
     makingOfferRef.current[id] || pc.signalingState !== "stable";
-  if (offerCollision && !polite) {
+
+  ignoreOfferRef.current[id] = !polite && offerCollision;
+
+  if (ignoreOfferRef.current[id]) {
     console.warn("Offer collision, ignoring offer from", id);
     return;
   }
-  ignoreOfferRef.current[id] = false;
+
   try {
     await pc.setRemoteDescription(description);
+
+    // Add local tracks before creating answer
     try {
       addLocalTracksToPcFn(pc);
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Failed to add local tracks:", e);
+    }
+
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
+
     const socketInstance = getSocket();
     if (socketInstance) socketInstance.emit("answer", id, answer);
   } catch (e) {
     console.warn("handleOffer failed", e);
+    ignoreOfferRef.current[id] = false;
   }
 };

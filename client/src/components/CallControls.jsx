@@ -1,19 +1,20 @@
 import Button from "../components/Button";
 import MicActivityDot from "../components/MicActivityDot";
 import { getSocket } from "../utils/socket";
-import { 
-  Mic, 
-  MicOff, 
-  Video, 
-  VideoOff, 
+import {
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
   Volume2,
-  MonitorUp, 
-  Share2, 
-  Hand, 
-  Users, 
-  Lock, 
+  MonitorUp,
+  Share2,
+  Hand,
+  Users,
+  Lock,
   Unlock,
-  MessageSquare
+  MessageSquare,
+  Headphones,
 } from "lucide-react";
 
 function CallControls({
@@ -26,15 +27,15 @@ function CallControls({
   volume,
   setVolume,
   gainNodeRef,
-  
+
   // camera controls
   camOn,
   toggleCam,
   sharing,
-  
+
   // screen share
   toggleScreenShare,
-  
+
   // room controls
   roomId,
   setNotifications,
@@ -46,32 +47,35 @@ function CallControls({
   members,
   toggleRoomLock,
   roomLocked,
-  
+
   // chat
   chatOpen,
   setChatOpen,
   chatUnread,
-  
+
   // time
   elapsed,
   remainingMs,
-  
+
   // utility functions
   formatDuration,
   formatRemaining,
-  
+
   // responsive
   isMobile,
-  isTablet
+  isTablet,
+
+  // device settings
+  onDeviceSettingsOpen,
 }) {
   const socket = getSocket();
-  
+
   if (isMobile || isTablet) {
     return null; // Mobile controls are handled in CallScreen
   }
 
   return (
-    <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 opacity-50 hover:opacity-100 transition-opacity">
+    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 opacity-50 hover:opacity-100 transition-opacity">
       <div className="bg-neutral-900 bg-opacity-90 border border-neutral-800 rounded-full px-2 sm:px-4 py-2 flex items-center gap-2 sm:gap-3 shadow-lg justify-center max-w-fit">
         <div className="relative flex items-center">
           <Button
@@ -125,16 +129,28 @@ function CallControls({
             <VideoOff size={16} />
           )}
         </Button>
-        <Button
-          variant={sharing ? "default" : "outline"}
-          onClick={toggleScreenShare}
-          className="cursor-pointer icon-hover-base icon-press"
-        >
-          <MonitorUp
-            size={16}
-            className={sharing ? "icon-speaking-pulse" : ""}
-          />
-        </Button>
+        {/* Screen sharing скрыта на мобильных - не поддерживается браузерами */}
+        {!isMobile && !isTablet && (
+          <Button
+            variant={sharing ? "default" : "outline"}
+            onClick={toggleScreenShare}
+            className="cursor-pointer icon-hover-base icon-press"
+          >
+            <MonitorUp
+              size={16}
+              className={sharing ? "icon-speaking-pulse" : ""}
+            />
+          </Button>
+        )}
+        {onDeviceSettingsOpen && (
+          <Button
+            variant="outline"
+            onClick={onDeviceSettingsOpen}
+            className="cursor-pointer icon-hover-base icon-press"
+          >
+            <Headphones size={16} />
+          </Button>
+        )}
         <Button
           variant="outline"
           onClick={() => {
@@ -149,10 +165,7 @@ function CallControls({
                     text: "Ссылка скопирована",
                   },
                 ]);
-                setTimeout(
-                  () => setNotifications((n) => n.slice(1)),
-                  3000
-                );
+                setTimeout(() => setNotifications((n) => n.slice(1)), 3000);
                 setShareLinkFlipTs(Date.now());
               })
               .catch(() => {});
@@ -175,9 +188,7 @@ function CallControls({
         >
           <span
             className={
-              handSignals.some((h) => h.id === socket?.id)
-                ? "hand-wave"
-                : ""
+              handSignals.some((h) => h.id === socket?.id) ? "hand-wave" : ""
             }
           >
             <Hand size={16} />
@@ -220,11 +231,7 @@ function CallControls({
             </span>
           )}
         </div>
-        <MicActivityDot
-          level={micLevel}
-          muted={!micOn}
-          className="ml-1"
-        />
+        <MicActivityDot level={micLevel} muted={!micOn} className="ml-1" />
       </div>
     </div>
   );

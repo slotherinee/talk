@@ -1,19 +1,26 @@
 import { useState, useRef, useEffect } from "react";
 import { connectSocket, getSocket, disconnectSocket } from "./utils/socket";
-import { generateRoomId, parseRoomId, isValidRoomId, checkRoomExists } from "./utils/helpers";
-import { 
+import {
+  generateRoomId,
+  parseRoomId,
+  isValidRoomId,
+  checkRoomExists,
+} from "./utils/helpers";
+import {
   createPeerConnectionFor,
   watchRemoteStream,
   renegotiateWith,
   addLocalTracksToPc,
   setupRemoteAnalyser,
-  handleOffer
+  handleOffer,
 } from "./utils/webrtc";
 import {
   createMicToggler,
   createCamToggler,
-  createScreenShareToggler
+  createScreenShareToggler,
+  createCameraSwitcher,
 } from "./utils/mediaControls";
+import { getUserDevices, switchToDevice } from "./utils/deviceUtils";
 import useMountTransition from "./hooks/useMountTransition";
 
 // Screen components
@@ -95,6 +102,15 @@ export default function App() {
     300
   );
 
+  // Device management state
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [outputDevices, setOutputDevices] = useState([]);
+  const [currentAudioDevice, setCurrentAudioDevice] = useState("");
+  const [currentVideoDevice, setCurrentVideoDevice] = useState("");
+  const [currentOutputDevice, setCurrentOutputDevice] = useState("");
+  const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
+
   useEffect(() => {
     const onResize = () => {
       const w = window.innerWidth;
@@ -109,8 +125,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const style = document.createElement('style');
-    style.textContent = '::-webkit-scrollbar { display: none; }';
+    const style = document.createElement("style");
+    style.textContent = "::-webkit-scrollbar { display: none; }";
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
   }, []);
@@ -233,7 +249,10 @@ export default function App() {
         ...n,
         {
           id: Date.now() + Math.random(),
-          text: `${((username || id)?.slice(0, 10) || "").substring(0, 10)} поднял(а) руку`,
+          text: `${((username || id)?.slice(0, 10) || "").substring(
+            0,
+            10
+          )} поднял(а) руку`,
         },
       ]);
       setTimeout(() => setNotifications((n) => n.slice(1)), 3500);
@@ -244,7 +263,10 @@ export default function App() {
         ...n,
         {
           id: Date.now() + Math.random(),
-          text: `${((username || id)?.slice(0, 10) || "").substring(0, 10)} начал(а) демонстрировать экран`,
+          text: `${((username || id)?.slice(0, 10) || "").substring(
+            0,
+            10
+          )} начал(а) демонстрировать экран`,
         },
       ]);
       setTimeout(() => setNotifications((n) => n.slice(1)), 4000);
@@ -262,13 +284,17 @@ export default function App() {
         ...n,
         {
           id: Date.now() + Math.random(),
-          text: `${((username || id)?.slice(0, 10) || "").substring(0, 10)} перестал(а) демонстрировать экран`,
+          text: `${((username || id)?.slice(0, 10) || "").substring(
+            0,
+            10
+          )} перестал(а) демонстрировать экран`,
         },
       ]);
       setTimeout(() => setNotifications((n) => n.slice(1)), 4000);
     });
     socket.on("chat-message", (msg) => {
-      const baseKey = (msg.username || msg.id) + ":" + msg.ts + ":" + (msg.text || "");
+      const baseKey =
+        (msg.username || msg.id) + ":" + msg.ts + ":" + (msg.text || "");
       if (chatMsgIdsRef.current.has(baseKey)) return; // already optimistic or received
       chatMsgIdsRef.current.add(baseKey);
       setChatMessages((prev) => {
@@ -285,7 +311,9 @@ export default function App() {
     socket.on("chat-history", (history) => {
       const list = history || [];
       list.forEach((m) =>
-        chatMsgIdsRef.current.add((m.username || m.id) + ":" + m.ts + ":" + (m.text || ""))
+        chatMsgIdsRef.current.add(
+          (m.username || m.id) + ":" + m.ts + ":" + (m.text || "")
+        )
       );
       setChatMessages(list);
     });
@@ -324,6 +352,35 @@ export default function App() {
     });
   }, [members]);
 
+  // Device initialization - load available devices on mount
+  useEffect(() => {
+    const initializeDevices = async () => {
+      try {
+        const devices = await getUserDevices();
+        setAudioDevices(devices.audioInput);
+        setVideoDevices(devices.videoInput);
+        setOutputDevices(devices.audioOutput);
+
+        // Set current devices from getUserMedia constraints or first available
+        if (devices.audioInput.length > 0 && !currentAudioDevice) {
+          setCurrentAudioDevice(devices.audioInput[0].deviceId);
+        }
+        if (devices.videoInput.length > 0 && !currentVideoDevice) {
+          setCurrentVideoDevice(devices.videoInput[0].deviceId);
+        }
+        if (devices.audioOutput.length > 0 && !currentOutputDevice) {
+          setCurrentOutputDevice(devices.audioOutput[0].deviceId);
+        }
+      } catch (error) {
+        console.warn("Failed to initialize devices:", error);
+      }
+    };
+
+    if (screen === "precall" || screen === "call") {
+      initializeDevices();
+    }
+  }, [screen, currentAudioDevice, currentVideoDevice, currentOutputDevice]);
+
   useEffect(() => {
     if (!handSignals.length) return; // nothing active
     const t = setInterval(() => {
@@ -338,7 +395,8 @@ export default function App() {
       const name = tempName.trim();
       setUsername(name); // keep applied
       const socket = getSocket();
-      if (roomId && socket) socket.emit("set-username", roomId, name || socket.id);
+      if (roomId && socket)
+        socket.emit("set-username", roomId, name || socket.id);
     }
   }, [tempName, screen, roomId]);
 
@@ -353,7 +411,9 @@ export default function App() {
       const id = member.id;
       const socket = getSocket();
       if (id === socket?.id) return;
-      const msg = `${(member.name || id)?.slice(0, 10)?.substring(0, 10) || ""} присоединился`;
+      const msg = `${
+        (member.name || id)?.slice(0, 10)?.substring(0, 10) || ""
+      } присоединился`;
       setNotifications((n) => [
         ...n,
         { id: Date.now() + Math.random(), text: msg },
@@ -363,14 +423,25 @@ export default function App() {
         try {
           if (pcs.current[id]) return;
           const pc = createPeerConnectionForId(id);
+
+          // Add local tracks first
           try {
             addLocalTracksToPC(pc);
-          } catch (e) {}
+          } catch (e) {
+            console.warn("Failed to add tracks to new PC:", e);
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
           if (pc.signalingState === "stable" && !makingOfferRef.current[id]) {
             makingOfferRef.current[id] = true;
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            if (socket) socket.emit("offer-to", id, offer);
+            try {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              if (socket) socket.emit("offer-to", id, offer);
+            } catch (offerError) {
+              console.warn("Failed to create/send offer:", offerError);
+            }
             makingOfferRef.current[id] = false;
           }
         } catch (e) {
@@ -382,7 +453,9 @@ export default function App() {
 
     removed.forEach((member) => {
       const id = member.id;
-      const msg = `${(member.name || id)?.slice(0, 10)?.substring(0, 10) || ""} вышел`;
+      const msg = `${
+        (member.name || id)?.slice(0, 10)?.substring(0, 10) || ""
+      } вышел`;
       setNotifications((n) => [
         ...n,
         { id: Date.now() + Math.random(), text: msg },
@@ -496,7 +569,14 @@ export default function App() {
       politeRef,
       pcs,
       setRemoteStreams,
-      (id, streamObj) => setupRemoteAnalyser(id, streamObj, remoteAnalyzersRef, audioContextRef, setRemoteLevels),
+      (id, streamObj) =>
+        setupRemoteAnalyser(
+          id,
+          streamObj,
+          remoteAnalyzersRef,
+          audioContextRef,
+          setRemoteLevels
+        ),
       (id, streamObj) => watchRemoteStream(id, streamObj, setRemoteStreams)
     );
   };
@@ -506,14 +586,20 @@ export default function App() {
   };
 
   const addLocalTracksToPC = (pc) => {
-    return addLocalTracksToPc(pc, localAudioTrackRef, localVideoTrackRef, sharing, screenTrackRef);
+    return addLocalTracksToPc(
+      pc,
+      localAudioTrackRef,
+      localVideoTrackRef,
+      sharing,
+      screenTrackRef
+    );
   };
 
   const handleOfferFromPeer = (id, description) => {
     return handleOffer(
-      id, 
-      description, 
-      pcs, 
+      id,
+      description,
+      pcs,
       createPeerConnectionForId,
       politeRef,
       makingOfferRef,
@@ -569,18 +655,71 @@ export default function App() {
     getSocket
   );
 
+  const switchCamera = createCameraSwitcher(
+    camOn,
+    localVideoTrackRef,
+    stream,
+    setStream,
+    pcs,
+    renegotiateWithPeer
+  );
+
+  // Device selection handlers
+  const handleAudioDeviceSelect = async (deviceId) => {
+    try {
+      await switchToDevice(deviceId, "audio", {
+        stream,
+        setStream,
+        localAudioTrackRef,
+        localVideoTrackRef,
+        pcs: pcs.current,
+        renegotiateWithPeer: renegotiateWithPeer,
+      });
+      setCurrentAudioDevice(deviceId);
+    } catch (error) {
+      console.error("Failed to switch audio device:", error);
+    }
+  };
+
+  const handleVideoDeviceSelect = async (deviceId) => {
+    try {
+      await switchToDevice(deviceId, "video", {
+        stream,
+        setStream,
+        localAudioTrackRef,
+        localVideoTrackRef,
+        pcs: pcs.current,
+        renegotiateWithPeer: renegotiateWithPeer,
+        localVideo: localVideo.current,
+      });
+      setCurrentVideoDevice(deviceId);
+    } catch (error) {
+      console.error("Failed to switch video device:", error);
+    }
+  };
+
+  const handleOutputDeviceSelect = async (deviceId) => {
+    try {
+      setCurrentOutputDevice(deviceId);
+      // Note: Output device switching would need additional implementation
+      // for existing audio elements if we had remote audio elements
+    } catch (error) {
+      console.error("Failed to switch output device:", error);
+    }
+  };
+
   useEffect(() => {
     if (screen !== "join") return;
-    
+
     // Try to get room ID from current URL
     const url = new URL(window.location.href);
     const pathname = url.pathname.slice(1); // Remove leading "/"
     const searchRoom = url.searchParams.get("room"); // Fallback to old format
     const hashRoom = window.location.hash.replace("#", ""); // Legacy hash format
-    
+
     const potentialRoomId = pathname || searchRoom || hashRoom;
     const parsedRoomId = parseRoomId(potentialRoomId);
-    
+
     if (parsedRoomId && !roomId) {
       setRoomId(parsedRoomId);
       setScreen("precall");
@@ -593,18 +732,18 @@ export default function App() {
     setRoomId(newRoomId);
     setAutoCreated(true);
     setErrors({ roomId: "" });
-    
+
     try {
       // Set clean URL format: /roomId instead of /?room=roomId
       window.history.replaceState({}, "", `/${newRoomId}`);
     } catch (e) {}
-    
+
     setScreen("precall");
   };
 
   const joinRoom = async () => {
     let target = parseRoomId(roomId);
-    
+
     if (!target) {
       // No valid room ID provided, generate a new one
       target = generateRoomId();
@@ -619,26 +758,26 @@ export default function App() {
       try {
         const roomCheck = await checkRoomExists(target);
         if (roomCheck.error) {
-          console.warn('Room check error:', roomCheck.error);
+          console.warn("Room check error:", roomCheck.error);
           // Continue anyway, server will handle it
         }
         if (!roomCheck.exists && !roomCheck.wasCreated) {
           setAutoCreated(true); // Will create new room
         }
       } catch (e) {
-        console.warn('Room validation failed:', e);
+        console.warn("Room validation failed:", e);
         // Continue anyway
       }
     }
-    
+
     setRoomId(target);
     setErrors({ roomId: "" });
-    
+
     try {
       // Set clean URL format: /roomId instead of /?room=roomId
       window.history.replaceState({}, "", `/${target}`);
     } catch (e) {}
-    
+
     setScreen("precall");
   };
 
@@ -649,7 +788,12 @@ export default function App() {
 
   const applyUsername = () => {
     const socket = getSocket();
-    const finalName = (tempName.trim() || username.trim() || socket?.id || 'user').slice(0, 10);
+    const finalName = (
+      tempName.trim() ||
+      username.trim() ||
+      socket?.id ||
+      "user"
+    ).slice(0, 10);
     setUsername(finalName);
     if (socket) socket.emit("set-username", roomId, finalName);
   };
@@ -657,19 +801,24 @@ export default function App() {
   const startCall = async () => {
     // Set up video stream for the call screen if not already done
     if (localVideo.current && stream) localVideo.current.srcObject = stream;
-    
+
     // Ensure socket is connected
     const socket = getSocket();
     if (!socket || !socket.connected) {
-      console.error('❌ Socket not connected when trying to start call');
+      console.error("❌ Socket not connected when trying to start call");
       return;
     }
-    
+
     // Apply username from tempName (or use fallback)
-    const finalName = (tempName.trim() || username.trim() || socket.id || 'user').slice(0, 10);
+    const finalName = (
+      tempName.trim() ||
+      username.trim() ||
+      socket.id ||
+      "user"
+    ).slice(0, 10);
     setUsername(finalName);
     socket.emit("set-username", roomId, finalName);
-    
+
     // Join the room and establish peer connections
     socket.emit("join", roomId, finalName);
     const targetIds = members.map((m) => m.id).filter((id) => id !== socket.id);
@@ -709,8 +858,8 @@ export default function App() {
     const ts = Date.now();
     const socket = getSocket();
     const optimistic = {
-      id: socket?.id || 'user',
-      name: username || socket?.id || 'user',
+      id: socket?.id || "user",
+      name: username || socket?.id || "user",
       text,
       ts,
       _local: true,
@@ -740,47 +889,43 @@ export default function App() {
     pcs.current = {};
     setRemoteStreams({});
     setMembers([]);
-    
+
     // Disconnect socket when leaving
     disconnectSocket();
-    
+
     setScreen("join");
     try {
-      window.history.replaceState(
-        {},
-        "",
-        window.location.origin + "/"
-      );
+      window.history.replaceState({}, "", window.location.origin + "/");
       setRoomId("");
     } catch (_) {}
   };
   useEffect(() => {
     if (chatOpen) {
       setChatUnread(0);
-      
+
       // Function to scroll to bottom
       const scrollToBottom = () => {
         const el = chatEndRef.current;
         if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          el.scrollIntoView({ behavior: "smooth", block: "end" });
         }
-        
+
         // Mobile container scrolling
         const mc = chatMobileContainerRef.current;
         if (mc) {
-          mc.scrollTo({ top: mc.scrollHeight, behavior: 'smooth' });
+          mc.scrollTo({ top: mc.scrollHeight, behavior: "smooth" });
         }
-        
-        // Desktop container scrolling  
+
+        // Desktop container scrolling
         const dc = chatDesktopContainerRef.current;
         if (dc) {
-          dc.scrollTo({ top: dc.scrollHeight, behavior: 'smooth' });
+          dc.scrollTo({ top: dc.scrollHeight, behavior: "smooth" });
         }
       };
-      
+
       // Immediate scroll attempt
       scrollToBottom();
-      
+
       // Delayed scroll to account for animation/layout changes
       const timeouts = [
         setTimeout(scrollToBottom, 100),
@@ -789,15 +934,15 @@ export default function App() {
           // Final scroll with 'auto' behavior as fallback
           const mc = chatMobileContainerRef.current;
           if (mc) {
-            mc.scrollTo({ top: mc.scrollHeight, behavior: 'auto' });
+            mc.scrollTo({ top: mc.scrollHeight, behavior: "auto" });
           }
           const dc = chatDesktopContainerRef.current;
           if (dc) {
-            dc.scrollTo({ top: dc.scrollHeight, behavior: 'auto' });
+            dc.scrollTo({ top: dc.scrollHeight, behavior: "auto" });
           }
-        }, 500)
+        }, 500),
       ];
-      
+
       return () => {
         timeouts.forEach(clearTimeout);
       };
@@ -816,7 +961,7 @@ export default function App() {
 
   useEffect(() => {
     if (!chatOpen) return;
-    
+
     // Function to scroll to bottom
     const scrollToBottom = () => {
       const el = chatEndRef.current;
@@ -825,24 +970,24 @@ export default function App() {
           el.scrollIntoView({ behavior: "smooth", block: "end" });
         } catch (_) {}
       }
-      
+
       // Mobile container scrolling
       const mc = chatMobileContainerRef.current;
       if (mc) {
         try {
-          mc.scrollTo({ top: mc.scrollHeight, behavior: 'smooth' });
+          mc.scrollTo({ top: mc.scrollHeight, behavior: "smooth" });
         } catch (_) {}
       }
-      
+
       // Desktop container scrolling
       const dc = chatDesktopContainerRef.current;
       if (dc) {
         try {
-          dc.scrollTo({ top: dc.scrollHeight, behavior: 'smooth' });
+          dc.scrollTo({ top: dc.scrollHeight, behavior: "smooth" });
         } catch (_) {}
       }
     };
-    
+
     // Scroll with delays to account for layout settling
     scrollToBottom();
     const timeout1 = setTimeout(scrollToBottom, 100);
@@ -851,17 +996,17 @@ export default function App() {
       const mc = chatMobileContainerRef.current;
       if (mc) {
         try {
-          mc.scrollTo({ top: mc.scrollHeight, behavior: 'auto' });
+          mc.scrollTo({ top: mc.scrollHeight, behavior: "auto" });
         } catch (_) {}
       }
       const dc = chatDesktopContainerRef.current;
       if (dc) {
         try {
-          dc.scrollTo({ top: dc.scrollHeight, behavior: 'auto' });
+          dc.scrollTo({ top: dc.scrollHeight, behavior: "auto" });
         } catch (_) {}
       }
     }, 300);
-    
+
     return () => {
       clearTimeout(timeout1);
       clearTimeout(timeout2);
@@ -869,11 +1014,7 @@ export default function App() {
   }, [chatMessages, chatOpen]);
 
   if (screen === "join") {
-    return (
-      <JoinScreen
-        createRoom={createRoom}
-      />
-    );
+    return <JoinScreen createRoom={createRoom} />;
   }
 
   if (screen === "precall") {
@@ -890,6 +1031,12 @@ export default function App() {
         roomId={roomId}
         tempName={tempName}
         setTempName={setTempName}
+        audioDevices={audioDevices}
+        videoDevices={videoDevices}
+        currentAudioDevice={currentAudioDevice}
+        currentVideoDevice={currentVideoDevice}
+        onAudioDeviceSelect={handleAudioDeviceSelect}
+        onVideoDeviceSelect={handleVideoDeviceSelect}
       />
     );
   }
@@ -920,6 +1067,7 @@ export default function App() {
         sharing={sharing}
         toggleMic={toggleMic}
         toggleCam={toggleCam}
+        switchCamera={switchCamera}
         toggleScreenShare={toggleScreenShare}
         roomId={roomId}
         roomLocked={roomLocked}
@@ -957,6 +1105,18 @@ export default function App() {
         pcs={pcs}
         setRemoteStreams={setRemoteStreams}
         setMembers={setMembers}
+        deviceSettingsOpen={deviceSettingsOpen}
+        onDeviceSettingsOpen={() => setDeviceSettingsOpen(true)}
+        onDeviceSettingsClose={() => setDeviceSettingsOpen(false)}
+        audioDevices={audioDevices}
+        videoDevices={videoDevices}
+        outputDevices={outputDevices}
+        currentAudioDevice={currentAudioDevice}
+        currentVideoDevice={currentVideoDevice}
+        currentOutputDevice={currentOutputDevice}
+        onAudioDeviceSelect={handleAudioDeviceSelect}
+        onVideoDeviceSelect={handleVideoDeviceSelect}
+        onOutputDeviceSelect={handleOutputDeviceSelect}
       />
     );
   }
