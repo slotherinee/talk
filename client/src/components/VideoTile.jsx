@@ -1,12 +1,6 @@
 import { useRef, useEffect } from "react";
 
-function VideoTile({
-  stream,
-  muted,
-  isScreenShare = false,
-  isLocal = false,
-  isFrontCamera = true,
-}) {
+function VideoTile({ stream, muted, isScreenShare = false, isLocal = false }) {
   const ref = useRef();
   useEffect(() => {
     if (ref.current) {
@@ -21,7 +15,7 @@ function VideoTile({
     }
   }, [stream]);
 
-  const shouldMirror = isLocal && !isScreenShare && !isFrontCamera;
+  const shouldMirror = isLocal && !isScreenShare;
 
   return (
     <video
