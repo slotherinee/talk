@@ -26,7 +26,7 @@ function PrecallScreen({
   onInitializeDevices,
 }) {
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-black px-4 overflow-hidden">
+    <div className="flex flex-col items-center justify-center min-h-dvh bg-black px-4">
       <div className="rounded-xl shadow-lg p-8 w-full max-w-xl border border-neutral-800 bg-neutral-900">
         <h2 className="text-2xl font-bold mb-4 text-neutral-100">
           Настройка перед звонком

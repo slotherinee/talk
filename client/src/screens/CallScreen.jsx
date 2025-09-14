@@ -171,9 +171,9 @@ function CallScreen({
   const gridLayout = getOptimalGrid(participants.length);
 
   return (
-    <div className="h-screen w-screen bg-black text-neutral-100 relative overflow-hidden">
+    <div className="min-h-dvh w-full bg-black text-neutral-100 relative overflow-hidden">
       <div
-        className="w-full h-full grid"
+        className="w-full min-h-dvh grid"
         style={{
           gridTemplateColumns: `repeat(${gridLayout.cols}, 1fr)`,
           gridTemplateRows: `repeat(${gridLayout.rows}, 1fr)`,
