@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
 /* Hide scrollbar utility */
 .hide-scrollbar {
   -ms-overflow-style: none; /* IE/Edge */

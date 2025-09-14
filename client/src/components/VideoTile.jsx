@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
 
-function VideoTile({ stream, muted, isScreenShare = false }) {
+function VideoTile({ stream, muted, isScreenShare = false, isLocal = false }) {
   const ref = useRef();
   useEffect(() => {
     if (ref.current) {
@@ -14,6 +14,7 @@ function VideoTile({ stream, muted, isScreenShare = false }) {
       tryPlay();
     }
   }, [stream]);
+
   return (
     <video
       ref={ref}
@@ -21,7 +22,7 @@ function VideoTile({ stream, muted, isScreenShare = false }) {
       playsInline
       muted={muted}
       className={`size-full object-cover object-center ${
-        isScreenShare ? "" : "transform -scale-x-100"
+        isLocal && !isScreenShare ? "transform -scale-x-100" : ""
       }`}
     />
   );

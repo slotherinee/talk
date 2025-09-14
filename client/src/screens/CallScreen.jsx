@@ -171,9 +171,9 @@ function CallScreen({
   const gridLayout = getOptimalGrid(participants.length);
 
   return (
-    <div className="min-h-screen min-w-screen bg-black text-neutral-100 relative overflow-hidden">
+    <div className="h-screen w-screen bg-black text-neutral-100 relative overflow-hidden">
       <div
-        className="w-full h-screen grid"
+        className="w-full h-full grid"
         style={{
           gridTemplateColumns: `repeat(${gridLayout.cols}, 1fr)`,
           gridTemplateRows: `repeat(${gridLayout.rows}, 1fr)`,
@@ -196,7 +196,7 @@ function CallScreen({
           return (
             <div
               key={key}
-              className="relative bg-black flex items-center justify-center overflow-hidden border border-neutral-500/20 min-h-0"
+              className="relative bg-black flex items-center justify-center overflow-hidden border border-neutral-500/20"
             >
               {(() => {
                 const hasActiveVideo =
@@ -207,11 +207,12 @@ function CallScreen({
                     .some((t) => t.readyState === "live" && t.enabled);
                 return hasActiveVideo;
               })() ? (
-                <div className="relative w-full h-full border border-neutral-500/20">
+                <div className="relative w-full h-full">
                   <VideoTile
                     stream={streamObj}
                     muted={isLocal}
                     isScreenShare={isLocal && sharing}
+                    isLocal={isLocal}
                   />
                   {handSignals.some((h) => h.id === id) && (
                     <div className="absolute top-2 right-2 bg-amber-500/80 text-black text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow">
