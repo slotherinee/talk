@@ -662,21 +662,59 @@ export default function App() {
     try {
       const willBeFrontCamera = !isFrontCamera;
 
-      setIsFrontCamera(willBeFrontCamera);
+      // Определяем желаемый facingMode на основе нашего состояния
+      const desiredFacingMode = willBeFrontCamera ? "user" : "environment";
 
-      const originalSwitcher = createCameraSwitcher(
-        camOn,
-        localVideoTrackRef,
-        stream,
-        setStream,
-        pcs,
-        renegotiateWithPeer
+      console.log(
+        `Switching camera: from ${isFrontCamera ? "front" : "back"} to ${
+          willBeFrontCamera ? "front" : "back"
+        }`
       );
 
-      await originalSwitcher();
+      const currentTrack = localVideoTrackRef.current;
+      currentTrack.stop();
+
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { exact: desiredFacingMode },
+        },
+      });
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      localVideoTrackRef.current = newVideoTrack;
+
+      if (stream) {
+        const audioTracks = stream.getAudioTracks();
+        const updatedStream = new MediaStream([...audioTracks, newVideoTrack]);
+        setStream(updatedStream);
+      } else {
+        setStream(new MediaStream([newVideoTrack]));
+      }
+
+      // Обновляем все peer connections
+      Object.entries(pcs.current).forEach(([peerId, pc]) => {
+        try {
+          const sender = pc
+            .getSenders()
+            .find((s) => s.track && s.track.kind === "video");
+          if (sender) {
+            sender.replaceTrack(newVideoTrack);
+          }
+        } catch (e) {
+          console.error("Failed to replace track for peer", peerId, e);
+        }
+      });
+
+      // Обновляем состояние только после успешного переключения
+      setIsFrontCamera(willBeFrontCamera);
+      console.log(
+        `Camera switched successfully to ${
+          willBeFrontCamera ? "front" : "back"
+        }`
+      );
     } catch (error) {
       console.error("Camera switch failed:", error);
-      setIsFrontCamera(!isFrontCamera);
+      // НЕ изменяем isFrontCamera при ошибке
     }
   };
 
