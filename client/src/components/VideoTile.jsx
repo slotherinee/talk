@@ -20,7 +20,7 @@ function VideoTile({ stream, muted }) {
       autoPlay
       playsInline
       muted={muted}
-      className="w-full h-full object-cover transform -scale-x-100"
+      className="transform -scale-x-100"
     />
   );
 }
