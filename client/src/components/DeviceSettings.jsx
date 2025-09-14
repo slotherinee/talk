@@ -15,6 +15,7 @@ function DeviceSettings({
   onAudioDeviceSelect,
   onVideoDeviceSelect,
   onAudioOutputDeviceSelect,
+  hideVideoSection = false,
   className = "",
 }) {
   useEffect(() => {
@@ -72,18 +73,20 @@ function DeviceSettings({
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-neutral-300 mb-2">
-              Камера
-            </label>
-            <DeviceSelector
-              type="video"
-              currentDeviceId={currentVideoDevice}
-              onDeviceSelect={onVideoDeviceSelect}
-              devices={videoDevices}
-              className="w-full"
-            />
-          </div>
+          {!hideVideoSection && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-2">
+                Камера
+              </label>
+              <DeviceSelector
+                type="video"
+                currentDeviceId={currentVideoDevice}
+                onDeviceSelect={onVideoDeviceSelect}
+                devices={videoDevices}
+                className="w-full"
+              />
+            </div>
+          )}
 
           {audioOutputDevices.length > 0 && (
             <div>

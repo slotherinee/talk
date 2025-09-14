@@ -58,12 +58,12 @@ function DeviceSelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  if (devices.length <= 1) {
+  if (devices.length === 0) {
     return (
       <div className={`flex items-center gap-2 text-neutral-400 ${className}`}>
         {getIcon()}
         <span className={`text-${size === "small" ? "xs" : "sm"} truncate`}>
-          {currentLabel}
+          Нет доступных устройств
         </span>
       </div>
     );

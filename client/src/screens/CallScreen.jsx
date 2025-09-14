@@ -263,13 +263,13 @@ function CallScreen({
                   Вы
                 </div>
               )}
-              <div className="absolute bottom-2 left-2 bg-neutral-900/70 text-xs px-2 py-1 rounded flex items-center gap-1">
+              <div className="absolute bottom-2 right-2 bg-neutral-900/70 text-xs px-2 py-1 rounded flex items-center gap-1">
                 {displayName}
                 {muted && <MicOff size={12} className="text-red-400" />}
               </div>
               {isLocal && camOn && isMobile && (
                 <Button
-                  className="absolute bottom-2 right-2 !p-1.5 !min-w-0 bg-transparent"
+                  className="absolute bottom-2 left-2 !p-1.5 !min-w-0 bg-transparent"
                   onClick={switchCamera}
                 >
                   <RotateCcw size={12} />
@@ -766,6 +766,7 @@ function CallScreen({
           onAudioDeviceSelect={onAudioDeviceSelect}
           onVideoDeviceSelect={onVideoDeviceSelect}
           onOutputDeviceSelect={onOutputDeviceSelect}
+          hideVideoSection={!camOn}
         />
       )}
     </div>

@@ -660,23 +660,7 @@ export default function App() {
     if (!camOn || !localVideoTrackRef.current) return;
 
     try {
-      const currentTrack = localVideoTrackRef.current;
-      const currentConstraints = currentTrack.getConstraints();
-      const currentFacingMode = currentConstraints.facingMode;
-
-      let newFacingMode = "user";
-      let willBeFrontCamera = true;
-
-      if (currentFacingMode === "user" || currentFacingMode?.exact === "user") {
-        newFacingMode = "environment";
-        willBeFrontCamera = false;
-      } else if (
-        currentFacingMode === "environment" ||
-        currentFacingMode?.exact === "environment"
-      ) {
-        newFacingMode = "user";
-        willBeFrontCamera = true;
-      }
+      const willBeFrontCamera = !isFrontCamera;
 
       setIsFrontCamera(willBeFrontCamera);
 
@@ -692,7 +676,7 @@ export default function App() {
       await originalSwitcher();
     } catch (error) {
       console.error("Camera switch failed:", error);
-      setIsFrontCamera(true);
+      setIsFrontCamera(!isFrontCamera);
     }
   };
 
