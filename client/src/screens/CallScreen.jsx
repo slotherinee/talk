@@ -45,6 +45,7 @@ function CallScreen({
   micOn,
   camOn,
   sharing,
+  isFrontCamera,
 
   // media controls
   toggleMic,
@@ -171,9 +172,9 @@ function CallScreen({
   const gridLayout = getOptimalGrid(participants.length);
 
   return (
-    <div className="min-h-dvh w-full bg-black text-neutral-100 relative overflow-hidden">
+    <div className="h-dvh w-full bg-black text-neutral-100 relative overflow-hidden">
       <div
-        className="w-full min-h-dvh grid"
+        className="w-full h-dvh grid"
         style={{
           gridTemplateColumns: `repeat(${gridLayout.cols}, 1fr)`,
           gridTemplateRows: `repeat(${gridLayout.rows}, 1fr)`,
@@ -207,12 +208,13 @@ function CallScreen({
                     .some((t) => t.readyState === "live" && t.enabled);
                 return hasActiveVideo;
               })() ? (
-                <div className="relative w-full h-full">
+                <div className="relative size-full">
                   <VideoTile
                     stream={streamObj}
                     muted={isLocal}
                     isScreenShare={isLocal && sharing}
                     isLocal={isLocal}
+                    isFrontCamera={isLocal ? isFrontCamera : true}
                   />
                   {handSignals.some((h) => h.id === id) && (
                     <div className="absolute top-2 right-2 bg-amber-500/80 text-black text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow">
@@ -265,10 +267,9 @@ function CallScreen({
                 {displayName}
                 {muted && <MicOff size={12} className="text-red-400" />}
               </div>
-              {isLocal && camOn && (
+              {isLocal && camOn && isMobile && (
                 <Button
-                  variant="outline"
-                  className="absolute bottom-2 right-2 !p-1.5 !min-w-0 bg-neutral-900/70 border-neutral-700 hover:bg-neutral-800/70"
+                  className="absolute bottom-2 right-2 !p-1.5 !min-w-0 bg-transparent"
                   onClick={switchCamera}
                 >
                   <RotateCcw size={12} />

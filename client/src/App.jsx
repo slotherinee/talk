@@ -109,6 +109,7 @@ export default function App() {
   const [currentAudioDevice, setCurrentAudioDevice] = useState("");
   const [currentVideoDevice, setCurrentVideoDevice] = useState("");
   const [currentOutputDevice, setCurrentOutputDevice] = useState("");
+  const [isFrontCamera, setIsFrontCamera] = useState(true);
 
   useEffect(() => {
     const onResize = () => {
@@ -621,16 +622,24 @@ export default function App() {
     getSocket
   );
 
-  const toggleCam = createCamToggler(
-    camOn,
-    setCamOn,
-    localVideoTrackRef,
-    stream,
-    setStream,
-    localVideo,
-    pcs,
-    renegotiateWithPeer
-  );
+  const toggleCam = async () => {
+    if (!camOn) {
+      setIsFrontCamera(true);
+    }
+
+    const originalToggler = createCamToggler(
+      camOn,
+      setCamOn,
+      localVideoTrackRef,
+      stream,
+      setStream,
+      localVideo,
+      pcs,
+      renegotiateWithPeer
+    );
+
+    await originalToggler();
+  };
 
   const toggleScreenShare = createScreenShareToggler(
     sharing,
@@ -647,16 +656,46 @@ export default function App() {
     getSocket
   );
 
-  const switchCamera = createCameraSwitcher(
-    camOn,
-    localVideoTrackRef,
-    stream,
-    setStream,
-    pcs,
-    renegotiateWithPeer
-  );
+  const switchCamera = async () => {
+    if (!camOn || !localVideoTrackRef.current) return;
 
-  // Device selection handlers
+    try {
+      const currentTrack = localVideoTrackRef.current;
+      const currentConstraints = currentTrack.getConstraints();
+      const currentFacingMode = currentConstraints.facingMode;
+
+      let newFacingMode = "user";
+      let willBeFrontCamera = true;
+
+      if (currentFacingMode === "user" || currentFacingMode?.exact === "user") {
+        newFacingMode = "environment";
+        willBeFrontCamera = false;
+      } else if (
+        currentFacingMode === "environment" ||
+        currentFacingMode?.exact === "environment"
+      ) {
+        newFacingMode = "user";
+        willBeFrontCamera = true;
+      }
+
+      setIsFrontCamera(willBeFrontCamera);
+
+      const originalSwitcher = createCameraSwitcher(
+        camOn,
+        localVideoTrackRef,
+        stream,
+        setStream,
+        pcs,
+        renegotiateWithPeer
+      );
+
+      await originalSwitcher();
+    } catch (error) {
+      console.error("Camera switch failed:", error);
+      setIsFrontCamera(true);
+    }
+  };
+
   const handleAudioDeviceSelect = async (deviceId) => {
     try {
       await switchToDevice(deviceId, "audio", {
@@ -693,8 +732,6 @@ export default function App() {
   const handleOutputDeviceSelect = async (deviceId) => {
     try {
       setCurrentOutputDevice(deviceId);
-      // Note: Output device switching would need additional implementation
-      // for existing audio elements if we had remote audio elements
     } catch (error) {
       console.error("Failed to switch output device:", error);
     }
@@ -703,11 +740,10 @@ export default function App() {
   useEffect(() => {
     if (screen !== "join") return;
 
-    // Try to get room ID from current URL
     const url = new URL(window.location.href);
-    const pathname = url.pathname.slice(1); // Remove leading "/"
-    const searchRoom = url.searchParams.get("room"); // Fallback to old format
-    const hashRoom = window.location.hash.replace("#", ""); // Legacy hash format
+    const pathname = url.pathname.slice(1);
+    const searchRoom = url.searchParams.get("room");
+    const hashRoom = window.location.hash.replace("#", "");
 
     const potentialRoomId = pathname || searchRoom || hashRoom;
     const parsedRoomId = parseRoomId(potentialRoomId);
@@ -719,14 +755,12 @@ export default function App() {
   }, [screen, roomId]);
 
   const createRoom = () => {
-    // Always generate a new room ID
     const newRoomId = generateRoomId();
     setRoomId(newRoomId);
     setAutoCreated(true);
     setErrors({ roomId: "" });
 
     try {
-      // Set clean URL format: /roomId instead of /?room=roomId
       window.history.replaceState({}, "", `/${newRoomId}`);
     } catch (e) {}
 
@@ -737,28 +771,23 @@ export default function App() {
     let target = parseRoomId(roomId);
 
     if (!target) {
-      // No valid room ID provided, generate a new one
       target = generateRoomId();
       setRoomId(target);
       setAutoCreated(true);
     } else if (!isValidRoomId(target)) {
-      // Invalid format
       setErrors({ roomId: "Неверный формат ID комнаты" });
       return;
     } else {
-      // Check if room exists (for user feedback)
       try {
         const roomCheck = await checkRoomExists(target);
         if (roomCheck.error) {
           console.warn("Room check error:", roomCheck.error);
-          // Continue anyway, server will handle it
         }
         if (!roomCheck.exists && !roomCheck.wasCreated) {
           setAutoCreated(true); // Will create new room
         }
       } catch (e) {
         console.warn("Room validation failed:", e);
-        // Continue anyway
       }
     }
 
@@ -766,7 +795,6 @@ export default function App() {
     setErrors({ roomId: "" });
 
     try {
-      // Set clean URL format: /roomId instead of /?room=roomId
       window.history.replaceState({}, "", `/${target}`);
     } catch (e) {}
 
@@ -1058,6 +1086,7 @@ export default function App() {
         micOn={micOn}
         camOn={camOn}
         sharing={sharing}
+        isFrontCamera={isFrontCamera}
         toggleMic={toggleMic}
         toggleCam={toggleCam}
         switchCamera={switchCamera}
