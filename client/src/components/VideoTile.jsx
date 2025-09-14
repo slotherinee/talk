@@ -21,7 +21,7 @@ function VideoTile({
     }
   }, [stream]);
 
-  const shouldMirror = isLocal && !isScreenShare && isFrontCamera;
+  const shouldMirror = isLocal && !isScreenShare && !isFrontCamera;
 
   return (
     <video
