@@ -3,13 +3,11 @@
 html,
 body {
   min-height: 100%;
-  overflow: hidden;
 }
 
 #root {
   min-height: 100vh;
   min-height: 100dvh;
-  overflow: hidden;
 }
 
 @supports (height: 100dvh) {
